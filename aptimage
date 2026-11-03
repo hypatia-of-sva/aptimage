@@ -217,7 +217,7 @@ case $1 in
         
             ver_line=`find_installed_package $name`
             ver_line_nr=$?
-            if [ "$ver_line" != "" ]; then
+            if [ "$ver_line" != "" ] && [ "$ver_line" != "$version" ]; then
                 echo "Update $name from version $ver_line to $version"
                 
                 if [ ! -f "$APTIMAGE_PATH/$name.bak" ]; then
