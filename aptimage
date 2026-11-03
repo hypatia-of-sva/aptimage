@@ -25,13 +25,13 @@ fi
 
 usage() {
     echo "usage: $0 [COMMAND]"
-    echo "\t Commands:"
-    echo "\t install [NAME]"
-    echo "\t delete [NAME]"
-    echo "\t search [TERM]"
-    echo "\t list"
-    echo "\t update"
-    echo "\t clear-backups"
+    echo "        Commands:"
+    echo "        install [NAME]"
+    echo "        delete [NAME]"
+    echo "        search [TERM]"
+    echo "        list"
+    echo "        update"
+    echo "        clear-backups"
     exit 0
 }
 
@@ -85,6 +85,10 @@ find_installed_package() {
 if [ -z $APTIMAGE_PATH  ] ||  [ -z $APTIMAGE_REPO_URL  ] ; then
     echo "Please set the environment-variable APTIMAGE_PATH to the absolute path of a directory (without final /) where you want your apps and configuration to be stored, and the environment-variable APTIMAGE_REPO_URL to the url you want to download updated repositories from!"
     exit 0
+fi
+
+if [ ! -f "$REPO" ]; then
+    wget $APTIMAGE_REPO_URL -O $REPO
 fi
 
 if [ $# -lt 1 ]; then
@@ -196,7 +200,7 @@ case $1 in
     update)
         touch $INSTALL
         
-        if [ ! -f "$REPO.bak" ]; then
+        if [ -f "$REPO.bak" ]; then
             rm $REPO.bak
         fi
         mv $REPO $REPO.bak
@@ -220,7 +224,7 @@ case $1 in
             if [ "$ver_line" != "" ] && [ "$ver_line" != "$version" ]; then
                 echo "Update $name from version $ver_line to $version"
                 
-                if [ ! -f "$APTIMAGE_PATH/$name.bak" ]; then
+                if [ -f "$APTIMAGE_PATH/$name.bak" ]; then
                     rm $APTIMAGE_PATH/$name.bak
                 fi
                 mv $APTIMAGE_PATH/$name $APTIMAGE_PATH/$name.bak
@@ -232,7 +236,7 @@ case $1 in
                     echo "and store the AppImage as $APTIMAGE_PATH/$2 and make it executable."
                 else
                     echo "Downloading AppImage from $download"
-                    wget $download -O $APTIMAGE_PATH/$2
+                    wget $download -O $APTIMAGE_PATH/$name
                     chmod +x $APTIMAGE_PATH/$2
                 fi
                 
