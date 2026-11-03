@@ -10,7 +10,7 @@ This is a very basic script that installs and updates AppImages based on a hoste
 
 gives you a list of all packages with package name, application name, description, version number and date, as well as the information if the program was packaged upstream or by some other packager.
 
-    aptimage search [search-term]+
+    aptimage search [search-term]
 
 gives the same list, but with the list filtered by application name and description according to search term.
 
