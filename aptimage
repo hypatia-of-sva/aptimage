@@ -1,0 +1,250 @@
+#!/bin/bash
+
+# see https://stackoverflow.com/a/69963982
+txtblk=$(tput setaf 0) # Black - Regular
+txtred=$(tput setaf 1) # Red
+txtgrn=$(tput setaf 2) # Green
+txtylw=$(tput setaf 3) # Yellow
+txtblu=$(tput setaf 4) # Blue
+txtpur=$(tput setaf 5) # Purple
+txtcyn=$(tput setaf 6) # Cyan
+txtwht=$(tput setaf 7) # White
+
+# CSV format:
+# name,description,packager(#=devs),version,date,download(#=opens website),website,thumbnail(#=missing),thumbnail-extension(#=missing)
+REPO=$APTIMAGE_PATH/repo.csv
+REPODATE=$(cat $REPO | head -n 1)
+REPOTEXT=$(cat $REPO | tail -n +2)
+# CSV format:
+# name,installed-version
+INSTALL=$APTIMAGE_PATH/install.csv
+THUMBDIR=$APTIMAGE_PATH/thumbnails
+if [ ! -d "$THUMBDIR" ]; then
+    mkdir $THUMBDIR
+fi
+
+usage() {
+    echo "usage: $0 [COMMAND]"
+    echo "\t Commands:"
+    echo "\t install [NAME]"
+    echo "\t delete [NAME]"
+    echo "\t search [TERM]"
+    echo "\t list"
+    echo "\t update"
+    echo "\t clear-backups"
+    exit 0
+}
+
+print() {
+    line=$1
+    name=`echo $line | cut -d "," -f 1 -`
+    description=`echo $line | cut -d "," -f 2 -`
+    packager=`echo $line | cut -d "," -f 3 -`
+    version=`echo $line | cut -d "," -f 4 -`
+    date=`echo $line | cut -d "," -f 5 -`
+    download=`echo $line | cut -d "," -f 6 -`
+    website=`echo $line | cut -d "," -f 7 -`
+    thumbnail=`echo $line | cut -d "," -f 8 -`
+    thumbnailext=`echo $line | cut -d "," -f 9 -`
+    if [ "$version" = "#" ]; then
+        version="unknown";
+    fi
+    echo "${txtcyn}$name${txtblk} [$version] ($date)"
+    if [ "$packager" = "#" ]; then
+        echo "       $description (upstream package)"
+    else
+        echo "       $description (packaged by $packager)"
+    fi
+    if [ "$download" = "#" ]; then
+        echo "       $name needs to be manually downloaded"
+    fi
+}
+
+find_package() {
+    while read line; do
+        name=`echo $line | cut -d "," -f 1 -`
+        if [ "$name" = "$1" ]; then
+            echo $line
+            break
+        fi
+    done <<<$REPOTEXT
+}
+
+find_installed_package() {
+    i=0
+    while read line; do
+        i=$(($i+1))
+        name=`echo $line | cut -d "," -f 1 -`
+        if [ "$name" = "$1" ]; then
+            echo $line
+            return $i
+        fi
+    done <<<$(cat $INSTALL)
+}
+
+if [ -z $APTIMAGE_PATH  ] ||  [ -z $APTIMAGE_REPO_URL  ] ; then
+    echo "Please set the environment-variable APTIMAGE_PATH to the absolute path of a directory (without final /) where you want your apps and configuration to be stored, and the environment-variable APTIMAGE_REPO_URL to the url you want to download updated repositories from!"
+    exit 0
+fi
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+case $1 in
+    list)
+        echo "Repository version: $REPODATE"
+        while read line; do
+            print "$line"
+        done <<<$REPOTEXT
+        ;;
+    search)
+        if [ $# -lt 2 ]; then
+            usage
+        fi
+        echo "Repository version: $REPODATE"
+        while read line; do
+            description=`echo $line | cut -d "," -f 2 -`
+            if echo ${description,,} | grep -q ${2,,}; then
+                print "$line"
+            fi
+        done <<<$REPOTEXT
+        ;;
+    install)
+        touch $INSTALL
+        if [ $# -lt 2 ]; then
+            usage
+        fi
+        install_line=`find_package $2`
+        if [ "$install_line" = "" ]; then
+            echo "Package $2 not found!"
+        else
+            if [ "`find_installed_package $2`" != "" ]; then
+                echo "Package $2 already installed! Update it with: $0 update"
+            else
+                name=`echo $install_line | cut -d "," -f 1 -`
+                description=`echo $install_line | cut -d "," -f 2 -`
+                packager=`echo $install_line | cut -d "," -f 3 -`
+                version=`echo $install_line | cut -d "," -f 4 -`
+                date=`echo $install_line | cut -d "," -f 5 -`
+                download=`echo $install_line | cut -d "," -f 6 -`
+                website=`echo $install_line | cut -d "," -f 7 -`
+                thumbnail=`echo $install_line | cut -d "," -f 8 -`
+                thumbnailext=`echo $install_line | cut -d "," -f 9 -`
+                thumnailfile="$2.$thumbnailext"
+                
+                
+                if [ "$download" = "#" ]; then
+                    echo "This package has no automatic download."
+                    echo "In order to register this file with $0, you need to download it from here:"
+                    echo "        $website"
+                    echo "and store the AppImage as $APTIMAGE_PATH/$2 and make it executable."
+                    echo "However, the version now attempted and thumbnail (if available) are saved, and the path you should store the file as is marked for removal in case of updates, to not leave this version in place for longer than necessary."
+                else
+                    echo "Downloading AppImage from $download"
+                    wget $download -O $APTIMAGE_PATH/$2
+                    chmod +x $APTIMAGE_PATH/$2
+                fi
+                
+                
+                if [ "$thumbnail" != "#" ]; then
+                    echo "Downloading Thumbnail from $thumbnail"
+                    wget $thumbnail -O $THUMBDIR/$thumnailfile
+                else 
+                    echo "Thumbnail not available"
+                fi
+                
+                echo "$2,$version" >> $INSTALL
+            fi
+            
+        fi
+    ;;
+    delete)
+        touch $INSTALL
+        if [ $# -lt 2 ]; then
+            usage
+        fi
+        install_line=`find_package $2`
+        if [ "$install_line" = "" ]; then
+            echo "Package $2 not found!"
+        else
+            ver_line=`find_installed_package $2`
+            ver_line_nr=$?
+            if [ "$ver_line" != "" ]; then
+                name=`echo $install_line | cut -d "," -f 1 -`
+                description=`echo $install_line | cut -d "," -f 2 -`
+                packager=`echo $install_line | cut -d "," -f 3 -`
+                version=`echo $install_line | cut -d "," -f 4 -`
+                date=`echo $install_line | cut -d "," -f 5 -`
+                download=`echo $install_line | cut -d "," -f 6 -`
+                website=`echo $install_line | cut -d "," -f 7 -`
+                thumbnail=`echo $install_line | cut -d "," -f 8 -`
+                thumbnailext=`echo $install_line | cut -d "," -f 9 -`
+                thumnailfile="$2.$thumbnailext"
+                
+                rm $APTIMAGE_PATH/$2
+                if [ "$thumbnail" != "#" ]; then
+                    rm $THUMBDIR/$thumnailfile
+                fi
+                sed -i "${ver_line_nr}d" $INSTALL
+            else
+                echo "Package $2 not installed!"
+            fi
+            
+        fi
+    ;;
+    update)
+        touch $INSTALL
+        
+        if [ ! -f "$REPO.bak" ]; then
+            rm $REPO.bak
+        fi
+        mv $REPO $REPO.bak
+        wget $APTIMAGE_REPO_URL -O $REPO
+        NEWREPODATE=$(cat $REPO | head -n 1)
+        NEWREPOTEXT=$(cat $REPO | tail -n +2)
+        echo "New repository version: $NEWREPODATE"
+        while read line; do
+            name=`echo $line | cut -d "," -f 1 -`
+            description=`echo $line | cut -d "," -f 2 -`
+            packager=`echo $line | cut -d "," -f 3 -`
+            version=`echo $line | cut -d "," -f 4 -`
+            date=`echo $line | cut -d "," -f 5 -`
+            download=`echo $line | cut -d "," -f 6 -`
+            website=`echo $line | cut -d "," -f 7 -`
+            thumbnail=`echo $line | cut -d "," -f 8 -`
+            thumbnailext=`echo $line | cut -d "," -f 9 -`
+        
+            ver_line=`find_installed_package $name`
+            ver_line_nr=$?
+            if [ "$ver_line" != "" ]; then
+                echo "Update $name from version $ver_line to $version"
+                
+                if [ ! -f "$APTIMAGE_PATH/$name.bak" ]; then
+                    rm $APTIMAGE_PATH/$name.bak
+                fi
+                mv $APTIMAGE_PATH/$name $APTIMAGE_PATH/$name.bak
+                
+                if [ "$download" = "#" ]; then
+                    echo "This package has no automatic download."
+                    echo "In order to register the update file with $0, you need to download it from here:"
+                    echo "        $website"
+                    echo "and store the AppImage as $APTIMAGE_PATH/$2 and make it executable."
+                else
+                    echo "Downloading AppImage from $download"
+                    wget $download -O $APTIMAGE_PATH/$2
+                    chmod +x $APTIMAGE_PATH/$2
+                fi
+                
+                sed -i "${ver_line_nr}d" $INSTALL
+                echo "$name,$version" >> $INSTALL
+                
+            fi
+        done <<<$NEWREPOTEXT
+    ;;
+    clear-backups)
+        rm $APTIMAGE_PATH/*.bak
+    ;;
+    *)
+        usage
+esac
